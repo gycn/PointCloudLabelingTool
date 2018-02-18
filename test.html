@@ -14,7 +14,7 @@
         <div id="main_container"></div>
 		<script src="three.js"></script>
         <script src="pc.js"></script>
-        <script src="OrbitControls.js"></script>
+        <script src="view.js"></script>
         <script type="x-shader/x-vertex" id="vertexshader">
             attribute float size;
             attribute vec3 customColor;
@@ -37,6 +37,11 @@
 		<script>
             var main_container = document.getElementById( 'main_container' );
 
+            var renderer = new THREE.WebGLRenderer();
+            renderer.setPixelRatio( window.devicePixelRatio );
+            renderer.setSize( main_container.offsetWidth, main_container.offsetHeight );
+            main_container.appendChild( renderer.domElement );
+            
             var scene = new THREE.Scene();
             
             var POINT_SIZE = 0.1;
@@ -71,156 +76,34 @@
         </script>
         
         <script>
-            var MOUSE_CORRECTION_FACTOR = 80.0;
-            var MOVE_CORRECTION_FACTOR = 0.3;
-
-            var VERTICAL = new THREE.Vector3(0, 0, 1);
-
-            var target = new THREE.Vector3(0, 0, 0);
-            
-            var sphere = new THREE.Mesh(new THREE.SphereGeometry(0.03), new THREE.MeshBasicMaterial({color: 0xffffff}));
-            sphere.position = target;
-            scene.add( sphere );
-
-            var quat = new THREE.Quaternion().setFromUnitVectors( new THREE.Vector3(0, 0, 1), new THREE.Vector3( 0, 1, 0 ) );
-            var quatInverse = quat.clone().inverse();
-
-            var mouseDown = false;
-            var twoFinger = false;
-
-            function zoom (camera, dy, target) {
-                var offset = new THREE.Vector3();
-                offset.copy(camera.position);
-                offset.sub(target);
-
-
-                var spherical = new THREE.Spherical();
-                spherical.setFromVector3(offset);
-               
-                spherical.radius *= 1 - dy;
-                 
-                offset.setFromSpherical(spherical);
-
-                offset.add(target);
-
-                camera.position.copy(offset);
-
-                camera.lookAt(target);
-            }
-
-            function rotate_XY(camera, dx, dy, target) {
-                var offset = new THREE.Vector3();
-                offset.copy(camera.position);
-                offset.sub(target);
-
-                offset.applyQuaternion(quat);
-
-                var spherical = new THREE.Spherical();
-                spherical.setFromVector3(offset);
-
-                spherical.theta += dx;
-                spherical.phi += dy;
-
-                spherical.phi = Math.max(0, Math.min(Math.PI, spherical.phi));
-
-                spherical.makeSafe();
-
-                offset.setFromSpherical(spherical);
-                offset.applyQuaternion(quatInverse);
-
-                offset.add(target);
-
-                camera.position.copy(offset);
-
-                camera.lookAt(target);
-            }
-
-            function rotate_X(camera, dx, dy, target) {
-                var offset = new THREE.Vector3();
-                offset.copy(camera.position);
-                offset.sub(target);
-
-                offset.applyQuaternion(quat);
-
-                var spherical = new THREE.Spherical();
-                spherical.setFromVector3(offset);
-
-                spherical.theta += dx;
-
-                spherical.makeSafe();
-                
-                offset.setFromSpherical(spherical);
-                offset.applyQuaternion(quatInverse);
-
-                offset.add(target);
-
-                camera.position.copy(offset);
-
-                camera.lookAt(target);
-            }
-
-            var views = [
+            var view_params = [
                 {
                     top: 0,
                     left: 0,
                     width: 0.6,
                     height: 1.0,
-                    drag: function (dx, dy) {
-                        rotate_XY (views[0].camera, dx, dy, target);
-                    },
-                    scroll: function (dy) {
-                        zoom (views[0].camera, dy, target);
-                    }
+                    restrictDrag: false,
+                    position: new THREE.Vector3(0, -8, 0.5)
                 },
                 {
                     top: 0,
                     left: 0.6,
                     width: 0.4,
                     height: 0.5,
-                    drag: function (dx, dy) {
-                        rotate_X (views[1].camera, dx, dy, target);
-                    },
-                    scroll: function (dy) {
-                        zoom (views[1].camera, dy, target);
-                    }
-
+                    restrictDrag: true,
+                    position: new THREE.Vector3(0, 0, 4)
                 },
                 {
                     top: 0.5,
                     left: 0.6,
                     width: 0.4,
                     height: 0.5,
-                    drag: function (dx, dy) {
-                        rotate_X (views[2].camera, dx, dy, target);
-                    },
-                    scroll: function (dy) {
-                        zoom (views[2].camera, dy, target);
-                    }
-
+                    restrictDrag: true,
+                    position: new THREE.Vector3(0, -8, 0)
                 }
             ];
 
-            var main_camera = new THREE.PerspectiveCamera( 75, main_container.offsetWidth / main_container.offsetHeight, 0.1, 1000 );
-            main_camera.up = new THREE.Vector3(0, 0, 1);
-            main_camera.position.z = 0.5;
-            main_camera.position.y = -8;
-            main_camera.lookAt(target);
-            views[0].camera = main_camera;
-
-            var down_camera = new THREE.PerspectiveCamera( 75, main_container.offsetWidth / main_container.offsetHeight, 0.1, 1000 );
-            down_camera.up = new THREE.Vector3(0, 0, 1);
-            down_camera.position.z = 8;
-            down_camera.position.y = 0;
-            down_camera.lookAt(target);
-            views[1].camera = down_camera;
-            views[1].drag(0, 0);
-
-            var side_camera = new THREE.PerspectiveCamera( 75, main_container.offsetWidth / main_container.offsetHeight, 0.1, 1000 );
-            side_camera.up = new THREE.Vector3(0, 0, 1);
-            side_camera.position.z = 0;
-            side_camera.position.y = -8;
-            side_camera.lookAt(target);
-            views[2].camera = side_camera;
+            var pc_views = new PCViews(view_params, new THREE.Vector3(0, 0, 0), scene, renderer, main_container);
         </script>
 
         <script>
@@ -230,137 +113,27 @@
             document.addEventListener('mouseup', onDocumentMouseUp, false);
             document.addEventListener( 'wheel', onMouseWheel, false );
             document.addEventListener( 'keydown', onKeyDown, false );
-
+            
             function onDocumentMouseDown( e ) {
-                mouseDown = true;
+                pc_views.handleMouseDown(e);
             }
 
             function onDocumentMouseUp( e ) {
-                mouseDown = false;
+                pc_views.handleMouseUp(e);
             }
 
             function onDocumentMouseMove( e ) {
-                if (mouseDown) {
-                    var dx = e.clientX - mouseX;
-                    var dy = e.clientY - mouseY;
-                    
-                    for (var i = 0; i < views.length; i++) {
-                        var x = e.clientX / main_container.offsetWidth;
-                        var y = e.clientY / main_container.offsetHeight;
-    
-                        if (x >= views[i].left && x <= views[i].left + views[i].width &&
-                            y >= views[i].top && y <= views[i].top + views[i].height) {
-                            views[i].drag(dx / MOUSE_CORRECTION_FACTOR, dy / MOUSE_CORRECTION_FACTOR);
-                        }
-                    }
-                } else if (twoFinger) {
-                    zoom(main_camera, dx, dy, target);        
-                }
-                mouseX = e.clientX;
-                mouseY = e.clientY;
+                pc_views.handleMouseMove(e);
             }
 
             function onMouseWheel(e) {
-                for (var i = 0; i < views.length; i++) {
-                    var x = e.clientX / main_container.offsetWidth;
-                    var y = e.clientY / main_container.offsetHeight;
-    
-                    if (x >= views[i].left && x <= views[i].left + views[i].width &&
-                        y >= views[i].top && y <= views[i].top + views[i].height) {
-                        views[i].scroll(e.deltaY / MOUSE_CORRECTION_FACTOR);
-                    }
-                }
-            }
-            
-            var UP_KEY = 38;
-            var DOWN_KEY = 40;
-            var LEFT_KEY = 37;
-            var RIGHT_KEY = 39;
-            var PERIOD_KEY = 190;
-            var SLASH_KEY = 191;
-
-            var MOVE_UP = new THREE.Vector3(0, 0, 0.2);
-            var MOVE_DOWN = new THREE.Vector3(0, 0, -0.2);
-
-            function calculateForward() {
-                var forward = new THREE.Vector3();
-                for (var i = 0; i < views.length; i++) {
-                    var x = mouseX / main_container.offsetWidth;
-                    var y = mouseY / main_container.offsetHeight;
-    
-                    if (x >= views[i].left && x <= views[i].left + views[i].width &&
-                        y >= views[i].top && y <= views[i].top + views[i].height) {
-                        forward.copy(target);
-                        forward.sub(views[i].camera.position);
-                        forward.z = 0;
-                        forward.normalize();
-                        forward.multiplyScalar(MOVE_CORRECTION_FACTOR);
-                        break;
-                    }
-                }
-                return forward;
-            }
-
-            function calculateLeft(forward) {
-                var left = new THREE.Vector3();
-                left.crossVectors(VERTICAL, forward);
-                left.normalize();
-                left.multiplyScalar(MOVE_CORRECTION_FACTOR);
-                return left;
+                pc_views.handleMouseWheel(e);
             }
 
             function onKeyDown(e) {
-                switch(e.keyCode) {
-                    case PERIOD_KEY:
-                        for (var i = 0; i < views.length; i++) {
-                            views[i].camera.position.add(MOVE_UP);
-                        }
-                        target.add(MOVE_UP);
-                        sphere.position.copy(target);
-                        break;
-                    case SLASH_KEY:
-                        for (var i = 0; i < views.length; i++) {
-                            views[i].camera.position.add(MOVE_DOWN);
-                        }
-                        target.add(MOVE_DOWN);
-                        sphere.position.copy(target);
-                        break;
-                    case UP_KEY:
-                        var forward = calculateForward();
-                        for (var i = 0; i < views.length; i++) {
-                            views[i].camera.position.add(forward);
-                        }
-                        target.add(forward);
-                        sphere.position.copy(target);
-                        break;
-                    case DOWN_KEY:
-                        var forward = calculateForward();
-                        for (var i = 0; i < views.length; i++) {
-                            views[i].camera.position.sub(forward);
-                        }
-                        target.sub(forward);
-                        sphere.position.copy(target);
-                        break;
-                    case LEFT_KEY:
-                        var forward = calculateForward();
-                        var left = calculateLeft(forward);
-                        for (var i = 0; i < views.length; i++) {
-                            views[i].camera.position.add(left);
-                        }
-                        target.add(left);
-                        sphere.position.copy(target);
-                        break;
-                    case RIGHT_KEY:
-                        var forward = calculateForward();
-                        var left = calculateLeft(forward);
-                        for (var i = 0; i < views.length; i++) {
-                            views[i].camera.position.sub(left);
-                        }
-                        target.sub(left);
-                        sphere.position.copy(target);
-                        break;
-                }
+                pc_views.handleKeyDown(e);
             }
+            
         </script>
 
         <script>
@@ -387,18 +160,18 @@
                     bounding_boxes[i].material.color.set( 0xffffff );
                 }
 
-                for (var i = 0; i < views.length; i++) {
+                for (var i = 0; i < pc_views.views.length; i++) {
                     var x = mouseX / main_container.offsetWidth;
                     var y = mouseY / main_container.offsetHeight;
     
-                    if (x >= views[i].left && x <= views[i].left + views[i].width &&
-                        y >= views[i].top && y <= views[i].top + views[i].height) {
-                        camera = views[i].camera;
-                        x -= views[i].left;
-                        x /= views[i].width;
+                    if (x >= pc_views.views[i].left && x <= pc_views.views[i].left + pc_views.views[i].width &&
+                        y >= pc_views.views[i].top && y <= pc_views.views[i].top + pc_views.views[i].height) {
+                        camera = pc_views.views[i].camera;
+                        x -= pc_views.views[i].left;
+                        x /= pc_views.views[i].width;
                         x = 2 * x - 1;
-                        y -= views[i].top;
-                        y /= views[i].height;
+                        y -= pc_views.views[i].top;
+                        y /= pc_views.views[i].height;
                         y = -2 * y + 1;
                         raycaster.setFromCamera( new THREE.Vector2(x, y), camera );
                         break;
@@ -414,35 +187,12 @@
         </script>
        
         <script>
-            var renderer = new THREE.WebGLRenderer();
-            renderer.setPixelRatio( window.devicePixelRatio );
-            renderer.setSize( main_container.offsetWidth, main_container.offsetHeight );
-            main_container.appendChild( renderer.domElement );
-            
             function animate() {
                 requestAnimationFrame( animate );
 
                 handleBoxMouseInteraction();
                 
-                for (var i = 0; i < views.length; i++) {
-                    var view = views[i];
-                    var camera = views[i].camera;
-
-                    var left   = Math.floor( main_container.offsetWidth * view.left );
-                    var top    = Math.floor( main_container.offsetHeight * view.top );
-                    var width  = Math.floor( main_container.offsetWidth * view.width );
-                    var height = Math.floor( main_container.offsetHeight * view.height );
-
-                    renderer.setViewport( left, top, width, height );
-                    renderer.setScissor( left, top, width, height );
-                    renderer.setScissorTest( true );
-
-                    camera.aspect = width / height;
-                    camera.updateProjectionMatrix();
-
-                    renderer.render( scene, camera );
-                }
-                
+                pc_views.render(); 
             }
             animate();
 		</script>
