@@ -12,9 +12,12 @@
 	<body>
         <button id="add_box">Add box</button>
         <div id="main_container"></div>
+
 		<script src="three.js"></script>
         <script src="pc.js"></script>
         <script src="view.js"></script>
+        <script src="bounding_boxes.js"></script>
+
         <script type="x-shader/x-vertex" id="vertexshader">
             attribute float size;
             attribute vec3 customColor;
@@ -107,23 +110,26 @@
         </script>
 
         <script>
-
             document.addEventListener( 'mousedown', onDocumentMouseDown, false );
             document.addEventListener('mousemove', onDocumentMouseMove, false);
             document.addEventListener('mouseup', onDocumentMouseUp, false);
             document.addEventListener( 'wheel', onMouseWheel, false );
             document.addEventListener( 'keydown', onKeyDown, false );
+            document.addEventListener( 'keyup', onKeyUp, false );
             
             function onDocumentMouseDown( e ) {
-                pc_views.handleMouseDown(e);
+                if (!bounding_boxes.handleMouseDown(e))
+                    pc_views.handleMouseDown(e);
             }
 
             function onDocumentMouseUp( e ) {
                 pc_views.handleMouseUp(e);
+                bounding_boxes.handleMouseUp(e);
             }
 
             function onDocumentMouseMove( e ) {
-                pc_views.handleMouseMove(e);
+                if (!bounding_boxes.handleMouseMove(e))
+                    pc_views.handleMouseMove(e);
             }
 
             function onMouseWheel(e) {
@@ -132,65 +138,23 @@
 
             function onKeyDown(e) {
                 pc_views.handleKeyDown(e);
+                bounding_boxes.handleKeyDown(e);
+            }
+
+            function onKeyUp(e) {
+                bounding_boxes.handleKeyUp();
             }
             
         </script>
 
         <script>
-            var bounding_boxes = [];
-            var raycaster = new THREE.Raycaster();
-            
-            function addBoundingBox() {
-                var cube = new THREE.Mesh( 
-                    new THREE.CubeGeometry( 1, 1, 1 ), 
-                    new THREE.MeshBasicMaterial(0xffffff)
-                );
-                var box = new THREE.BoxHelper( cube, 0xffffff );
-                scene.add( box );
-
-                bounding_boxes.push(box);
-            }
-
-            document.getElementById("add_box").addEventListener("click", addBoundingBox);
-
-            var mouseX = 0;
-            var mouseY = 0;
-            function handleBoxMouseInteraction() {
-                for (var i = 0; i < bounding_boxes.length; i++) {
-                    bounding_boxes[i].material.color.set( 0xffffff );
-                }
-
-                for (var i = 0; i < pc_views.views.length; i++) {
-                    var x = mouseX / main_container.offsetWidth;
-                    var y = mouseY / main_container.offsetHeight;
-    
-                    if (x >= pc_views.views[i].left && x <= pc_views.views[i].left + pc_views.views[i].width &&
-                        y >= pc_views.views[i].top && y <= pc_views.views[i].top + pc_views.views[i].height) {
-                        camera = pc_views.views[i].camera;
-                        x -= pc_views.views[i].left;
-                        x /= pc_views.views[i].width;
-                        x = 2 * x - 1;
-                        y -= pc_views.views[i].top;
-                        y /= pc_views.views[i].height;
-                        y = -2 * y + 1;
-                        raycaster.setFromCamera( new THREE.Vector2(x, y), camera );
-                        break;
-                    }
-                }
-
-                var intersects = raycaster.intersectObjects( bounding_boxes );
-
-                for ( var i = 0; i < intersects.length; i++ ) {
-                    intersects[ i ].object.material.color.set( 0xff0000 );
-                }
-            }
+            var bounding_boxes = new BoundingBoxes(scene, pc_views);
+            document.getElementById("add_box").addEventListener("click", function () { bounding_boxes.addBoundingBox(); });
         </script>
        
         <script>
             function animate() {
                 requestAnimationFrame( animate );
-
-                handleBoxMouseInteraction();
                 
                 pc_views.render(); 
             }
