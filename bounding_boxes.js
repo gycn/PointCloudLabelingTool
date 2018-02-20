@@ -1,6 +1,5 @@
 function BoundingBoxes(scene, pc_views) {
     this.bounding_boxes = [];
-    this.bounding_box_outlines = [];
     var raycaster = new THREE.Raycaster();
     this.scene = scene;
     this.selection = null;
@@ -31,7 +30,6 @@ function BoundingBoxes(scene, pc_views) {
             outline.box = box;
 
             this.bounding_boxes.push(box);
-            this.bounding_box_outlines.push(outline);
             this.select(box);
 
             selectionNewBox = true;
@@ -67,8 +65,6 @@ function BoundingBoxes(scene, pc_views) {
         // Set up raycaster
         raycaster.setFromCamera(new THREE.Vector2(x, y), this.pc_views.currentView.camera);
         
-        //var outline_intersects = raycaster.intersectObjects(this.bounding_box_outlines);
-
         var intersects = raycaster.intersectObjects(this.bounding_boxes);
         
         // Unhighlight previous box
@@ -106,24 +102,30 @@ function BoundingBoxes(scene, pc_views) {
     var mouseX = 0;
     var mouseY = 0;
 
-    var viewPlaneNormal = new THREE.Vector3();
-    var viewPlanePoint = null;
-    var viewPlaneOffset = new THREE.Vector3();
-
-    var moveBoxAlongViewPlane = function(mX, mY, box, view) {
+    function calculateProjectionFromMouse(mX, mY) {
         // Convert mX and mY to NDC
         var NDC = convertMouseToNDC(mX, mY, this.pc_views); 
 
         var projection = new THREE.Vector3(NDC[0], NDC[1], 0.5);
 
-        projection.unproject(view.camera);
+        projection.unproject(this.pc_views.currentView.camera);
 
-        projection.sub(view.camera.position);
+        projection.sub(this.pc_views.currentView.camera.position);
+
+        return projection;
+    }
+
+    var viewPlaneNormal = new THREE.Vector3();
+    var viewPlanePoint = null;
+    var viewPlaneOffset = new THREE.Vector3();
+
+    var moveBoxAlongViewPlane = function(mX, mY, box) {
+        var projection = calculateProjectionFromMouse(mX, mY);
 
         var dist = -viewPlaneNormal.dot(viewPlaneNormal) / projection.dot(viewPlaneNormal);
 
         projection.multiplyScalar(dist);
-        projection.add(view.camera.position);
+        projection.add(this.pc_views.currentView.camera.position);
         projection.add(viewPlaneOffset);
 
         box.position.copy(projection);
@@ -135,10 +137,30 @@ function BoundingBoxes(scene, pc_views) {
 
         box.outline.rotateOnAxis(pc_views.VERTICAL, dx);
     }
+
+    var scaleBox = function(mX, mY, box) {
+        var camera = this.pc_views.currentView.camera;
+
+        var projection = calculateProjectionFromMouse(mX, mY); 
+        var dist = (box.position.z - camera.position.z) / projection.z;
+        projection.multiplyScalar(dist);
+
+        var boxPlanePoint = new THREE.Vector3();
+        boxPlanePoint.copy(camera.position);
+        boxPlanePoint.add(projection);
+        
+        box.worldToLocal(boxPlanePoint);
+
+        box.scale.x = boxPlanePoint.x * box.scale.x * 2;
+        box.outline.scale.x = boxPlanePoint.x * box.scale.x * 2;
+        box.scale.y = boxPlanePoint.y * box.scale.y * 2;
+        box.outline.scale.y = boxPlanePoint.y * box.scale.y * 2;
+    }
     
     var MOVING_BOX = 1;
     var ROTATING_BOX = 2;
     var SCALING_BOX = 3; 
+    var EXTRUDING_BOX = 4;
 
     var boxEditState = MOVING_BOX;
 
@@ -150,13 +172,17 @@ function BoundingBoxes(scene, pc_views) {
         } else if (boundingBoxesState == ADJUSTING) {
             if (this.selection == boxMouseOver) {
                 boundingBoxesState = EDITING;
-                viewPlanePoint = this.selection.position;
 
-                viewPlaneNormal.copy(this.pc_views.currentView.camera.position);
-                viewPlaneNormal.sub(viewPlanePoint);
+                if (boxEditState == MOVING_BOX) {
+                    viewPlanePoint = this.selection.position;
 
-                viewPlaneOffset.copy(this.selection.position);
-                viewPlaneOffset.sub(boxMouseOverPoint);
+                    viewPlaneNormal.copy(this.pc_views.currentView.camera.position);
+                    viewPlaneNormal.sub(viewPlanePoint);
+
+                    viewPlaneOffset.copy(this.selection.position);
+                    viewPlaneOffset.sub(boxMouseOverPoint);
+                }
+
                 return true;
             }
         }
@@ -164,8 +190,10 @@ function BoundingBoxes(scene, pc_views) {
     }
 
     this.handleMouseUp = function(e) {
-        if (boundingBoxesState == EDITING)
+        if (boundingBoxesState == EDITING) {
             boundingBoxesState = ADJUSTING;
+            boxEditState = MOVING_BOX;
+        }
     }
     
     this.handleMouseMove = function(e) {
@@ -178,10 +206,11 @@ function BoundingBoxes(scene, pc_views) {
 
         if (boundingBoxesState == EDITING) {
             if (boxEditState == MOVING_BOX)
-                moveBoxAlongViewPlane(e.clientX, e.clientY, this.selection, pc_views.currentView);
+                moveBoxAlongViewPlane(e.clientX, e.clientY, this.selection);
             else if (boxEditState == ROTATING_BOX)
                 rotateBox((e.clientX - mouseX) / this.pc_views.MOUSE_CORRECTION_FACTOR, this.selection);
-
+            else if (boxEditState == SCALING_BOX)
+                scaleBox(e.clientX, e.clientY, this.selection);
             consume = true;
         }
 
@@ -194,6 +223,7 @@ function BoundingBoxes(scene, pc_views) {
     var ESCAPE_KEY = 27;
     var R_KEY = 82;
     var S_KEY = 83;
+    var E_KEY = 69;
 
     this.handleKeyDown = function(e) {
         switch(e.keyCode) {
@@ -209,15 +239,22 @@ function BoundingBoxes(scene, pc_views) {
                 this.deselect();
                 break;
             case R_KEY:
-                boxEditState = ROTATING_BOX;
+                if (boundingBoxesState != EDITING)
+                    boxEditState = ROTATING_BOX;
                 break;
             case S_KEY:
-                boxEditState = SCALING_BOX;
+                if (boundingBoxesState != EDITING)
+                    boxEditState = SCALING_BOX;
+                break;
+            case E_KEY:
+                if (boundingBoxesState != EDITING)
+                    boxEditState = EXTRUDING_BOX;
                 break;
         }
     }
 
     this.handleKeyUp = function(e) {
-        boxEditState = MOVING_BOX;    
+        if (boundingBoxesState != EDITING)
+            boxEditState = MOVING_BOX;    
     }
 }
