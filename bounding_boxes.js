@@ -18,16 +18,20 @@ function BoundingBoxes(scene, pc_views) {
         if (boundingBoxesState == STANDBY) {
             // Create box
             var box = new THREE.Mesh( 
-                new THREE.BoxGeometry( 1, 1, 0.01 ), 
+                new THREE.BoxGeometry( 1, 1, 1 ), 
                 new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.5})
             );
             
             // Move box to view location
             box.position.copy(this.pc_views.target);
+            box.scale.z = 0.01;
             
             // Create outline
             var edges = new THREE.EdgesGeometry( box.geometry );
             var outline = new THREE.LineSegments( edges, new THREE.LineBasicMaterial( { color: 0xffffff } ) );
+
+            outline.position.copy(this.pc_views.target);
+            outline.scale.z = 0.01;
             
             // Add box and outline to scene
             this.scene.add(outline);
@@ -125,22 +129,30 @@ function BoundingBoxes(scene, pc_views) {
         projection.unproject(this.pc_views.currentView.camera);
 
         projection.sub(this.pc_views.currentView.camera.position);
+        projection.normalize();
 
         return projection;
     }
     
     // Variables for holding parameters for moving box along the view plane
     var viewPlaneNormal = new THREE.Vector3();
-    var viewPlanePoint = null;
     var viewPlaneOffset = new THREE.Vector3();
     
     // Move box along a plane parallel to the view that intersects the box's current position
     var moveBoxAlongViewPlane = function(mX, mY, box) {
+        // Get projection from camera to world
         var projection = calculateProjectionFromMouse(mX, mY);
+        
+        // Get vector from camera to box
+        var camToBox = new THREE.Vector3();
+        camToBox.copy(this.pc_views.currentView.camera.position);
+        camToBox.sub(boxMouseOverPoint);
 
-        var dist = -viewPlaneNormal.dot(viewPlaneNormal) / projection.dot(viewPlaneNormal);
-
+        // Adjust projection to go from camera to a plane parallel to the screen that intersects the box's position
+        var dist = -camToBox.dot(viewPlaneNormal) / projection.dot(viewPlaneNormal);
         projection.multiplyScalar(dist);
+
+        // Set box position to point 
         projection.add(this.pc_views.currentView.camera.position);
         projection.add(viewPlaneOffset);
 
@@ -156,25 +168,51 @@ function BoundingBoxes(scene, pc_views) {
     }
     
     // Scale box based on mouse position
-    var scaleBox = function(mX, mY, box) {
+    function scaleBox(mX, mY, box) {
         var camera = this.pc_views.currentView.camera;
-
+        
+        // Get projection from camera to world
         var projection = calculateProjectionFromMouse(mX, mY); 
+        // Adjust projection to go from camera position to a point 
+        // on a plane parallel to XY plane intersecting the box's center
         var dist = (box.position.z - camera.position.z) / projection.z;
         projection.multiplyScalar(dist);
-
+        
+        // Get point on aforementioned plane
         var boxPlanePoint = new THREE.Vector3();
         boxPlanePoint.copy(camera.position);
         boxPlanePoint.add(projection);
         
+        // Convert point to box coordinates
         box.worldToLocal(boxPlanePoint);
-
+        
+        // Set closest box corner to be at the point
         box.scale.x = boxPlanePoint.x * box.scale.x * 2;
         box.outline.scale.x = boxPlanePoint.x * box.scale.x * 2;
         box.scale.y = boxPlanePoint.y * box.scale.y * 2;
         box.outline.scale.y = boxPlanePoint.y * box.scale.y * 2;
     }
     
+    // Set box z scale to mouse raycast
+    function extrudeBox(mX, mY, box) {
+        
+        // Get Projection from camera to world
+        var P = calculateProjectionFromMouse(mX, mY);
+        
+        // Camera position
+        var C = this.pc_views.currentView.camera.position;
+
+        var B = boxMouseOverPoint; 
+
+        var vert_dist = C.z - B.z + (B.dot(P) - P.dot(C)) * P.z;
+        vert_dist /= 1 - P.z * P.z;
+        
+        var scale = (vert_dist + boxMouseOverPoint.z - box.position.z) * 2;
+
+        box.scale.z = scale;
+        box.outline.scale.z = scale;
+    }
+
     // Edit state FSM
     var MOVING_BOX = 1;
     var ROTATING_BOX = 2;
@@ -194,10 +232,9 @@ function BoundingBoxes(scene, pc_views) {
                 boundingBoxesState = EDITING;
 
                 if (boxEditState == MOVING_BOX) {
-                    viewPlanePoint = this.selection.position;
-
                     viewPlaneNormal.copy(this.pc_views.currentView.camera.position);
-                    viewPlaneNormal.sub(viewPlanePoint);
+                    viewPlaneNormal.sub(this.pc_views.target);
+                    viewPlaneNormal.normalize();
 
                     viewPlaneOffset.copy(this.selection.position);
                     viewPlaneOffset.sub(boxMouseOverPoint);
@@ -222,17 +259,19 @@ function BoundingBoxes(scene, pc_views) {
         if (this.pc_views.currentView == null)
             return false;
 
-        this.highlightMouseHover(e.clientX, e.clientY);
-
         var consume = false;
 
-        if (boundingBoxesState == EDITING) {
+        if (boundingBoxesState == STANDBY || boundingBoxesState == ADJUSTING) {
+            this.highlightMouseHover(e.clientX, e.clientY);
+        } else if (boundingBoxesState == EDITING) {
             if (boxEditState == MOVING_BOX)
                 moveBoxAlongViewPlane(e.clientX, e.clientY, this.selection);
             else if (boxEditState == ROTATING_BOX)
                 rotateBox((e.clientX - mouseX) / this.pc_views.MOUSE_CORRECTION_FACTOR, this.selection);
             else if (boxEditState == SCALING_BOX)
                 scaleBox(e.clientX, e.clientY, this.selection);
+            else if (boxEditState == EXTRUDING_BOX)
+                extrudeBox(e.clientX, e.clientY, this.selection);
             consume = true;
         }
 
